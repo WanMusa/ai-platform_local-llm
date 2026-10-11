@@ -1,5 +1,6 @@
 """FastAPI entrypoint: shared model backend, separate per-use-case profiles."""
 
+import logging
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -26,6 +27,8 @@ from app.schemas import (
     HermesHelperResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="ai-platform local-llm", version="0.1.0")
 
 _LIST_FIELDS = {"responsibilities", "requirements", "skills"}
@@ -41,7 +44,10 @@ def _run_model(client: ModelClient, messages, profile) -> str:
             json_mode=profile.json_mode,
         )
     except ModelClientError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        logger.warning("Model call failed for profile %s: %s", profile.name, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Model backend unavailable"
+        ) from exc
 
 
 def _as_str(value: Any) -> str | None:

@@ -4,6 +4,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Hard cap on request text size; MAX_INPUT_CHARS further truncates what reaches the model.
+MAX_TEXT_LENGTH = 200_000
+MAX_PROMPT_LENGTH = 20_000
+
 
 class HealthResponse(BaseModel):
     status: str = "ok"
@@ -18,12 +22,14 @@ class ExtractJobRequest(BaseModel):
     source_url: str | None = Field(default=None, max_length=4096)
     site: str | None = Field(default=None, max_length=200, description="e.g. linkedin, seek")
     page_title: str | None = Field(default=None, max_length=1000)
-    cleaned_text: str = Field(..., min_length=1, description="Visible job-posting text")
+    cleaned_text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH, description="Visible job-posting text")
     system_prompt_override: str | None = Field(
-        default=None, description="Replaces the default extract_job system prompt"
+        default=None,
+        max_length=MAX_PROMPT_LENGTH,
+        description="Replaces the default extract_job system prompt",
     )
     extra_instructions: str | None = Field(
-        default=None, description="Appended to the user prompt"
+        default=None, max_length=MAX_PROMPT_LENGTH, description="Appended to the user prompt"
     )
 
 
@@ -55,10 +61,12 @@ class ExtractJobResponse(ExtractedJob):
 
 class HermesHelperRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=200, description="e.g. summarize, classify")
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
     context: dict[str, Any] | None = None
-    instructions: str | None = Field(default=None, description="Optional extra guidance")
-    system_prompt_override: str | None = None
+    instructions: str | None = Field(
+        default=None, max_length=MAX_PROMPT_LENGTH, description="Optional extra guidance"
+    )
+    system_prompt_override: str | None = Field(default=None, max_length=MAX_PROMPT_LENGTH)
 
 
 class HermesHelperResponse(BaseModel):
