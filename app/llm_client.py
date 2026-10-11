@@ -6,11 +6,15 @@ implementation talks to any OpenAI-compatible `/chat/completions` endpoint
 different Gemma runtime is just a matter of changing LLM_BASE_URL / LLM_MODEL.
 """
 
+import logging
 from typing import Protocol
 
 import httpx
+from fastapi import Depends
 
 from app.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class ModelClientError(RuntimeError):
@@ -77,11 +81,12 @@ class OpenAICompatibleClient:
                 f"Model backend returned HTTP {exc.response.status_code}"
             ) from exc
         except httpx.HTTPError as exc:
-            raise ModelClientError(f"Model backend request failed: {exc}") from exc
+            logger.warning("Model backend request failed: %r", exc)
+            raise ModelClientError("Model backend request failed") from exc
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise ModelClientError("Unexpected response shape from model backend") from exc
 
 
-def get_model_client() -> ModelClient:
+def get_model_client(settings: Settings = Depends(get_settings)) -> ModelClient:
     """FastAPI dependency. Tests override this via app.dependency_overrides."""
-    return OpenAICompatibleClient(get_settings())
+    return OpenAICompatibleClient(settings)

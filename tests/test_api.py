@@ -5,11 +5,12 @@ Run with:  pytest -q
 
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
-from app.llm_client import ModelClientError, get_model_client
+from app.llm_client import ModelClientError, OpenAICompatibleClient, get_model_client
 from app.main import app
 from app.profiles import parse_json_object
 
@@ -223,3 +224,36 @@ def test_parse_json_object_handles_chatter():
     assert parse_json_object('Here you go: {"a": 1} thanks') == {"a": 1}
     assert parse_json_object("[1, 2]") is None
     assert parse_json_object("") is None
+    assert parse_json_object('Sure! {"a": {"b": 2}} Hope this helps {}') == {"a": {"b": 2}}
+
+
+def _fake_post(captured, response):
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured.update(url=url, json=json, headers=headers)
+        return httpx.Response(
+            response["status"], json=response["body"], request=httpx.Request("POST", url)
+        )
+
+    return fake_post
+
+
+def test_openai_client_sends_expected_request(monkeypatch):
+    captured: dict = {}
+    body = {"choices": [{"message": {"content": "hi"}}]}
+    monkeypatch.setattr(httpx, "post", _fake_post(captured, {"status": 200, "body": body}))
+    client = OpenAICompatibleClient(make_settings(llm_api_key="k", llm_json_mode=True))
+
+    out = client.chat([{"role": "user", "content": "x"}], temperature=0.2, max_tokens=10, json_mode=True)
+
+    assert out == "hi"
+    assert captured["url"] == "http://fake:1234/v1/chat/completions"
+    assert captured["json"]["model"] == "fake-gemma"
+    assert captured["json"]["response_format"] == {"type": "json_object"}
+    assert captured["headers"]["Authorization"].endswith(" k")
+
+
+def test_openai_client_maps_http_errors(monkeypatch):
+    monkeypatch.setattr(httpx, "post", _fake_post({}, {"status": 500, "body": {}}))
+    client = OpenAICompatibleClient(make_settings())
+    with pytest.raises(ModelClientError):
+        client.chat([], temperature=0, max_tokens=1)

@@ -143,15 +143,20 @@ def parse_json_object(raw: str) -> dict[str, Any] | None:
     if not raw:
         return None
     text = _FENCE_RE.sub("", raw.strip()).strip()
-    candidates = [text]
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        candidates.append(text[start : end + 1])
-    for candidate in candidates:
+    try:
+        value = json.loads(text)
+        return value if isinstance(value, dict) else None
+    except ValueError:
+        pass
+    decoder = json.JSONDecoder()
+    start = text.find("{")
+    while start != -1:
         try:
-            value = json.loads(candidate)
+            value, _ = decoder.raw_decode(text, start)
         except ValueError:
+            start = text.find("{", start + 1)
             continue
         if isinstance(value, dict):
             return value
+        start = text.find("{", start + 1)
     return None

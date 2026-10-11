@@ -71,7 +71,7 @@ def _coerce_job(data: dict[str, Any]) -> ExtractedJob:
 
 
 @app.get("/health", response_model=HealthResponse)
-def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
+async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     return HealthResponse(model=settings.llm_model, profiles=PROFILE_NAMES)
 
 
