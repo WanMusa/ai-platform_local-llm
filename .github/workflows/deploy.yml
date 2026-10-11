@@ -1,0 +1,67 @@
+name: Deploy to Oracle VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+
+          script: |
+            set -e
+
+            DEPLOY_DIR="$HOME/projects/ai-platform_local-llm"
+
+            # Create parent directory if it doesn't exist
+            mkdir -p "$HOME/projects"
+
+            # First deployment: clone repo
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+                echo "=== FIRST DEPLOYMENT ==="
+                echo "Repository not found. Cloning..."
+
+                git clone https://github.com/WanMusa/ai-platform_local-llm.git "$DEPLOY_DIR"
+            else
+                echo "=== EXISTING DEPLOYMENT ==="
+
+                cd "$DEPLOY_DIR"
+
+                echo "=== BEFORE ==="
+                git rev-parse HEAD
+
+                git fetch origin
+                git reset --hard origin/main
+            fi
+
+            cd "$DEPLOY_DIR"
+
+            if [ ! -f .env ]; then
+                echo "ERROR: $DEPLOY_DIR/.env not found."
+                echo "Create it from .env.example on the VPS, then re-run this workflow."
+                exit 1
+            fi
+
+            if ! docker network inspect ai_platform >/dev/null 2>&1; then
+                echo "Creating ai_platform network..."
+                docker network create ai_platform
+            else
+                echo "ai_platform network already exists"
+            fi
+
+            docker compose up -d --build --remove-orphans
+
+            echo "=== AFTER ==="
+            git rev-parse HEAD
+
+            echo "=== DEPLOY COMPLETE ==="
