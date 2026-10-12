@@ -15,6 +15,8 @@ docker compose up -d ollama --wait --wait-timeout 180
 echo "Checking/provisioning the configured model (up to 30 minutes)..."
 if ! timeout 1800 docker compose exec -T ollama sh -c \
     'ollama show "$LLM_MODEL" >/dev/null 2>&1 || ollama pull "$LLM_MODEL"'; then
+    # A disconnected docker exec client does not stop work inside the container.
+    docker compose stop --timeout 10 ollama
     echo "ERROR: Model provisioning failed or exceeded 30 minutes. Check Ollama logs and rerun." >&2
     exit 1
 fi

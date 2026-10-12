@@ -154,6 +154,10 @@ timeout() {
     if failed_step:
         assert result.returncode != 0
         assert "compose up -d --build" not in recorded
+        if failed_step == "model":
+            assert "compose stop --timeout 10 ollama" in recorded
+        else:
+            assert "compose stop" not in recorded
     else:
         assert result.returncode == 0
         assert recorded.index("compose up -d ollama") < recorded.index("timeout 1800")

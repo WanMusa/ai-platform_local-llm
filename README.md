@@ -299,8 +299,9 @@ The workflow fetches the private repository, preserves `.env`, and runs
 
 The named `ollama_data` volume stores weights across deployments. Do not run
 `docker compose down -v` or delete the volume unless you intend to erase models.
-If provisioning times out/fails, inspect logs and rerun; a CLI timeout may not
-cancel a download already running inside Ollama.
+If provisioning times out/fails, the script stops Ollama (10-second shutdown
+grace) to cancel work inside the container before a retry. This also interrupts
+any current inference; inspect logs and rerun. Downloaded weights remain on disk.
 
 **VPS terminal**, after bootstrap, for diagnostics or a manual retry (do not run
 concurrently with an Actions deployment):
