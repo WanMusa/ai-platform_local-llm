@@ -34,7 +34,19 @@ jobs:
                 echo "=== FIRST DEPLOYMENT ==="
                 echo "Repository not found. Cloning..."
 
-                git clone https://github.com/WanMusa/ai-platform_local-llm.git "$DEPLOY_DIR"
+              CLONE_DIR=$(mktemp -d "$HOME/projects/local-llm-clone.XXXXXX")
+              git clone --branch main https://github.com/WanMusa/ai-platform_local-llm.git "$CLONE_DIR"
+
+              if [ -e "$DEPLOY_DIR" ]; then
+                BACKUP_DIR=$(mktemp -d "$HOME/projects/local-llm-backup.XXXXXX")
+                mv "$DEPLOY_DIR" "$BACKUP_DIR/original"
+                echo "Existing deployment files backed up to $BACKUP_DIR/original"
+                if [ -f "$BACKUP_DIR/original/.env" ]; then
+                  cp -p "$BACKUP_DIR/original/.env" "$CLONE_DIR/.env"
+                fi
+              fi
+
+              mv "$CLONE_DIR" "$DEPLOY_DIR"
             else
                 echo "=== EXISTING DEPLOYMENT ==="
 
