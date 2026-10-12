@@ -45,6 +45,9 @@ class Settings:
     extract_job_max_tokens: int
     hermes_helper_temperature: float
     hermes_helper_max_tokens: int
+    ollama_base_url: str = "http://ollama:11434"
+    llm_keep_alive: str = "15m"
+    llm_warmup_timeout_seconds: float = 300.0
 
 
 def load_settings() -> Settings:
@@ -60,6 +63,9 @@ def load_settings() -> Settings:
         extract_job_max_tokens=_env_int("EXTRACT_JOB_MAX_TOKENS", 1500),
         hermes_helper_temperature=_env_float("HERMES_HELPER_TEMPERATURE", 0.5),
         hermes_helper_max_tokens=_env_int("HERMES_HELPER_MAX_TOKENS", 1024),
+        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://ollama:11434").rstrip("/"),
+        llm_keep_alive=os.getenv("LLM_KEEP_ALIVE", "15m"),
+        llm_warmup_timeout_seconds=_env_float("LLM_WARMUP_TIMEOUT_SECONDS", 300.0),
     )
 
 

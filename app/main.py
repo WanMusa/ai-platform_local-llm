@@ -1,12 +1,14 @@
 """FastAPI entrypoint: shared model backend, separate per-use-case profiles."""
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
 
 from app.auth import require_token
 from app.config import Settings, get_settings
+from app.lifecycle import OllamaLifecycle, get_lifecycle
 from app.llm_client import ModelClient, ModelClientError, get_model_client
 from app.profiles import (
     PROFILE_NAMES,
@@ -25,11 +27,22 @@ from app.schemas import (
     HealthResponse,
     HermesHelperRequest,
     HermesHelperResponse,
+    LLMStatusResponse,
 )
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ai-platform local-llm", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    application.state.llm_lifecycle = OllamaLifecycle()
+    try:
+        yield
+    finally:
+        await application.state.llm_lifecycle.close()
+
+
+app = FastAPI(title="ai-platform local-llm", version="0.1.0", lifespan=lifespan)
 
 _LIST_FIELDS = {"responsibilities", "requirements", "skills"}
 _STR_FIELDS = set(ExtractedJob.model_fields) - _LIST_FIELDS
@@ -79,6 +92,31 @@ def _coerce_job(data: dict[str, Any]) -> ExtractedJob:
 @app.get("/health", response_model=HealthResponse)
 async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     return HealthResponse(model=settings.llm_model, profiles=PROFILE_NAMES)
+
+
+@app.get(
+    "/llm/status", response_model=LLMStatusResponse,
+    dependencies=[Depends(require_token)],
+)
+async def llm_status(
+    settings: Settings = Depends(get_settings),
+    lifecycle: OllamaLifecycle = Depends(get_lifecycle),
+) -> LLMStatusResponse:
+    return await lifecycle.status(settings)
+
+
+@app.post(
+    "/llm/wake", response_model=LLMStatusResponse, status_code=202,
+    dependencies=[Depends(require_token)],
+)
+async def llm_wake(
+    settings: Settings = Depends(get_settings),
+    lifecycle: OllamaLifecycle = Depends(get_lifecycle),
+) -> LLMStatusResponse:
+    result = await lifecycle.wake(settings)
+    if result.state == "unavailable":
+        raise HTTPException(status_code=503, detail=result.error)
+    return result
 
 
 @app.post(

@@ -1,6 +1,6 @@
 """Pydantic request/response schemas."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,12 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     model: str
     profiles: list[str]
+
+
+class LLMStatusResponse(BaseModel):
+    state: Literal["ready", "sleeping", "warming", "unavailable"]
+    model: str
+    error: str | None = None
 
 
 # ---------- extract_job ----------

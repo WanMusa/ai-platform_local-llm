@@ -3,6 +3,7 @@
 Run with:  pytest -q
 """
 
+import asyncio
 import json
 
 import httpx
@@ -10,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
+from app.lifecycle import OllamaLifecycle
 from app.llm_client import ModelClientError, OpenAICompatibleClient, get_model_client
 from app.main import app
 from app.profiles import parse_json_object
@@ -80,6 +82,85 @@ def test_health_no_auth_required(client):
     assert body["status"] == "ok"
     assert body["model"] == "fake-gemma"
     assert body["profiles"] == ["extract_job", "hermes_helper"]
+
+
+@pytest.mark.parametrize("path,method", [("/llm/status", "get"), ("/llm/wake", "post")])
+def test_lifecycle_requires_auth(client, path, method):
+    assert getattr(client, method)(path).status_code == 401
+
+
+def test_lifecycle_wake_is_background_and_deduplicated():
+    async def scenario():
+        started = asyncio.Event()
+        release = asyncio.Event()
+        loaded = False
+        requests = []
+
+        async def backend(request):
+            nonlocal loaded
+            requests.append(request)
+            if request.url.path == "/api/ps":
+                return httpx.Response(200, json={
+                    "models": [{"name": "fake-gemma"}] if loaded else [],
+                })
+            started.set()
+            await release.wait()
+            loaded = True
+            return httpx.Response(200, json={"done": True, "response": "OK"})
+
+        lifecycle = OllamaLifecycle(httpx.MockTransport(backend))
+        settings = make_settings()
+        assert (await lifecycle.status(settings)).state == "sleeping"
+        assert (await lifecycle.wake(settings)).state == "warming"
+        await started.wait()
+        assert (await lifecycle.wake(settings)).state == "warming"
+        assert (await lifecycle.status(settings)).state == "warming"
+        release.set()
+        await lifecycle.task
+        assert (await lifecycle.status(settings)).state == "ready"
+        assert (await lifecycle.wake(settings)).state == "ready"
+        generated = [request for request in requests if request.method == "POST"]
+        assert len(generated) == 1
+        payload = json.loads(generated[0].content)
+        assert payload["keep_alive"] == "15m"
+        assert payload["options"]["num_predict"] == 1
+        loaded = False
+        assert (await lifecycle.status(settings)).state == "sleeping"
+        await lifecycle.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", ["offline", "invalid", "warmup"])
+def test_lifecycle_reports_failures_and_allows_retry(failure):
+    async def scenario():
+        failing = True
+
+        def backend(request):
+            if request.method == "GET":
+                if failing and failure == "offline":
+                    raise httpx.ConnectError("private backend details", request=request)
+                return httpx.Response(200, json=[] if failing and failure == "invalid" else {"models": []})
+            return httpx.Response(500 if failing else 200, json={"done": True, "response": "OK"})
+
+        lifecycle = OllamaLifecycle(httpx.MockTransport(backend))
+        settings = make_settings()
+        initial = await lifecycle.wake(settings)
+        if failure == "warmup":
+            assert initial.state == "warming"
+            await lifecycle.task
+        else:
+            assert initial.state == "unavailable"
+        result = await lifecycle.status(settings)
+        assert result.state == "unavailable"
+        assert "private" not in result.model_dump_json()
+        failing = False
+        assert (await lifecycle.wake(settings)).state == "warming"
+        await lifecycle.task
+        assert lifecycle.error is None
+        await lifecycle.close()
+
+    asyncio.run(scenario())
 
 
 def test_extract_job_happy_path(client, fake_model):
