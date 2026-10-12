@@ -38,17 +38,17 @@ services:
   # Optional: shared Gemma runtime via Ollama on the same network.
   # Uncomment if you are not already running a model server elsewhere, then
   # pull the model once:  docker exec -it ollama ollama pull gemma3:4b
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: ollama
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ollama_data:/root/.ollama
-  #   networks:
-  #     - ai_platform
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai_platform
 
-# volumes:
-#   ollama_data:
+volumes:
+  ollama_data:
 
 networks:
   ai_platform:
