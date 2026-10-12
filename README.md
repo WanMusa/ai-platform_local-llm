@@ -345,9 +345,11 @@ then run using Python 3:
 python "$PWD/scripts/test_live_api.py"
 ```
 
-The script defaults to **`https://localgemma.wanagents.duckdns.org`** and prompts
-without echo for your `LOCAL_LLM_API_TOKEN` (or reads that environment variable
-if you securely set it locally). `LOCAL_LLM_TEST_URL` optionally selects another
+The script defaults to **`https://localgemma.wanagents.duckdns.org`** and reads
+`LOCAL_LLM_API_TOKEN` from the project-root `.env` file, regardless of your working
+directory. An existing environment variable takes precedence. There is no token
+prompt; a missing or invalid token produces an error. Keep `.env` out of Git.
+`LOCAL_LLM_TEST_URL` optionally selects another
 HTTPS origin. It submits **“What is the capital of France?”** to `/hermes-helper`,
 prints response/model, and exits nonzero unless nonempty output contains **Paris**.
 TLS certificate/hostname verification is enabled; redirects are refused so the

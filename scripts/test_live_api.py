@@ -1,15 +1,18 @@
 """Opt-in HTTPS inference check; run directly from your laptop, not via pytest."""
 
-import getpass
 import json
 import os
 import re
 import sys
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from dotenv import dotenv_values
+
 DEFAULT_URL = "https://localgemma.wanagents.duckdns.org"
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -32,9 +35,11 @@ def main() -> int:
         print("FAIL: Use an HTTPS origin only (no credentials, path, query, or fragment).", file=sys.stderr)
         return 1
 
-    token = os.getenv("LOCAL_LLM_API_TOKEN") or getpass.getpass("API bearer token: ")
+    token = os.getenv("LOCAL_LLM_API_TOKEN") or dotenv_values(
+        ENV_FILE, interpolate=False,
+    ).get("LOCAL_LLM_API_TOKEN")
     if not token or re.fullmatch(r"[A-Za-z0-9_-]{32,}", token) is None:
-        print("FAIL: A URL-safe API bearer token of at least 32 characters is required.", file=sys.stderr)
+        print("FAIL: Set LOCAL_LLM_API_TOKEN in the project-root .env file or environment to a URL-safe token of at least 32 characters.", file=sys.stderr)
         return 1
 
     payload = {
@@ -88,5 +93,5 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (EOFError, KeyboardInterrupt):
-        sys.exit("FAIL: Token entry cancelled.")
+    except KeyboardInterrupt:
+        sys.exit("FAIL: Request cancelled.")

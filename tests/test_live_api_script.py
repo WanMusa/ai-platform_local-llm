@@ -10,9 +10,10 @@ TOKEN = "unit-test-only-bearer-value-0123456789"
 
 
 @pytest.fixture
-def request_stub(monkeypatch):
+def request_stub(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCAL_LLM_API_TOKEN", TOKEN)
     monkeypatch.delenv("LOCAL_LLM_TEST_URL", raising=False)
+    monkeypatch.setattr(test_live_api, "ENV_FILE", tmp_path / ".env")
     captured = {}
 
     class Opener:
@@ -49,10 +50,29 @@ def test_unsafe_url_refused(request_stub, monkeypatch, url):
     assert "request" not in request_stub
 
 
-def test_token_prompt(request_stub, monkeypatch):
+def test_token_from_dotenv(request_stub, monkeypatch, tmp_path):
     monkeypatch.delenv("LOCAL_LLM_API_TOKEN")
-    monkeypatch.setattr(test_live_api.getpass, "getpass", lambda prompt: TOKEN)
+    test_live_api.ENV_FILE.write_text(
+        f'export LOCAL_LLM_API_TOKEN="{TOKEN}" # local token\n', encoding="utf-8",
+    )
+    other_directory = tmp_path / "other"
+    other_directory.mkdir()
+    monkeypatch.chdir(other_directory)
     assert test_live_api.main() == 0
+    assert request_stub["request"].get_header("Authorization") == " ".join(("Bearer", TOKEN))
+
+
+def test_environment_token_overrides_dotenv(request_stub):
+    test_live_api.ENV_FILE.write_text("LOCAL_LLM_API_TOKEN=short\n", encoding="utf-8")
+    assert test_live_api.main() == 0
+    assert request_stub["request"].get_header("Authorization") == " ".join(("Bearer", TOKEN))
+
+
+def test_missing_token_fails_without_prompt(request_stub, monkeypatch, capsys):
+    monkeypatch.delenv("LOCAL_LLM_API_TOKEN")
+    assert test_live_api.main() == 1
+    assert "request" not in request_stub
+    assert "project-root .env" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("token", ["short", "has newline\n" * 3])
