@@ -197,63 +197,32 @@ The two blank required values above **must be filled before deploying**:
 Compose rejects empty domain/email/token. Generation also rejects weak or
 placeholder server tokens even if the API health check succeeds.
 
-### 4. VPS terminal + GitHub settings: private repository access
+### 4. VPS terminal: public repository access
 
-This is a **second, separate key: VPS → GitHub**, not `VPS_SSH_KEY`.
-Run on the VPS as the same `VPS_USER` used by Actions:
+The repository is public. The workflow fetches it over HTTPS without a GitHub
+deploy key, token, or GitHub SSH `known_hosts` entry on the VPS. Keep
+`VPS_SSH_KEY` configured: it is still required for Actions to connect to the VPS.
 
-```bash
-mkdir -p "$HOME/.ssh"
-chmod 700 "$HOME/.ssh"
-# Run only if this key does NOT already exist; never overwrite an existing key.
-ssh-keygen -t ed25519 -f "$HOME/.ssh/local_llm_github" -C "local-llm read-only deploy"
-chmod 600 "$HOME/.ssh/local_llm_github"
-cat "$HOME/.ssh/local_llm_github.pub"
-```
-
-Use an empty passphrase for unattended deployment (protect the private key on
-the VPS). In **GitHub → this repository → Settings → Deploy keys → Add deploy key**,
-paste the **public `.pub`** value; leave **Allow write access unchecked**.
-Never upload the private key to GitHub/chat. This read-only key should be specific
-to this repository.
-
-Verify GitHub's host key before allowing automated SSH:
+To check repository access on the VPS without an interactive login prompt:
 
 ```bash
-ssh-keyscan -t ed25519 github.com > /tmp/local-llm-github-hostkey
-ssh-keygen -lf /tmp/local-llm-github-hostkey -E sha256
+GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/WanMusa/ai-platform_local-llm.git HEAD
 ```
-
-**Stop here and compare** the fingerprint with GitHub's published Ed25519
-fingerprint over trusted HTTPS:
-[GitHub SSH key fingerprints](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints).
-`ssh-keyscan` alone does not authenticate the server. **Only after a match**:
-
-```bash
-cat /tmp/local-llm-github-hostkey >> "$HOME/.ssh/known_hosts"
-chmod 600 "$HOME/.ssh/known_hosts"
-rm /tmp/local-llm-github-hostkey
-GIT_SSH_COMMAND="ssh -i \"$HOME/.ssh/local_llm_github\" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes" \
-  git ls-remote git@github.com:WanMusa/ai-platform_local-llm.git HEAD
-```
-
-Never use `StrictHostKeyChecking=no`. If a host-key mismatch occurs, investigate
-and verify a legitimate rotation before updating `known_hosts`.
 
 **Your folder already has `.env` but no Git clone:** leave it there. The workflow
-uses `git init` + authenticated fetch + checkout, not `git clone` into a nonempty
+uses `git init` + public HTTPS fetch + checkout, not `git clone` into a nonempty
 directory. It refuses bootstrap if anything other than `.env` is present: back
 up/move those files manually first. A failed fetch can be retried without deleting
 `.env`.
 
-**If it is already a clone:** the workflow accepts the documented SSH origin,
-or converts the exact old anonymous HTTPS origin to SSH. It rejects other origins
+**If it is already a clone:** the workflow accepts the documented HTTPS origin,
+or converts the exact old GitHub SSH origin to HTTPS. It rejects other origins
 without printing them. To explicitly fix a different origin, after verifying
 this is the right clone, run on the VPS:
 
 ```bash
 git -C "$HOME/projects/ai-platform_local-llm" remote set-url origin \
-  git@github.com:WanMusa/ai-platform_local-llm.git
+  https://github.com/WanMusa/ai-platform_local-llm.git
 ```
 
 No GitHub tokens belong in remotes. Existing checkouts must be clean `main`;

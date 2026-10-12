@@ -30,13 +30,8 @@ jobs:
           script: |
             set -eu
             DEPLOY_DIR="$HOME/projects/ai-platform_local-llm"
-            REPO_SSH="git@github.com:WanMusa/ai-platform_local-llm.git"
-            export GIT_SSH_COMMAND="ssh -i \"$HOME/.ssh/local_llm_github\" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
-
-            if [ ! -r "$HOME/.ssh/local_llm_github" ] || [ ! -r "$HOME/.ssh/known_hosts" ]; then
-                echo "ERROR: Configure the VPS read-only GitHub deploy key and verified known_hosts (README)."
-                exit 1
-            fi
+            REPO_HTTPS="https://github.com/WanMusa/ai-platform_local-llm.git"
+            export GIT_TERMINAL_PROMPT=0
             if [ ! -f "$DEPLOY_DIR/.env" ]; then
                 echo "ERROR: $DEPLOY_DIR/.env not found."
                 echo "Create/update it manually on the VPS; Actions does not transfer application settings."
@@ -51,18 +46,18 @@ jobs:
                     exit 1
                 fi
                 git init -b main
-                git remote add origin "$REPO_SSH"
+                git remote add origin "$REPO_HTTPS"
             else
                 if [ "$(git rev-parse --show-toplevel)" != "$DEPLOY_DIR" ]; then
                     echo "ERROR: Deployment directory is not the expected Git working tree."
                     exit 1
                 fi
                 case "$(git config --get remote.origin.url)" in
-                    "$REPO_SSH") ;;
-                    https://github.com/WanMusa/ai-platform_local-llm.git)
-                        git remote set-url origin "$REPO_SSH" ;;
+                  "$REPO_HTTPS") ;;
+                  git@github.com:WanMusa/ai-platform_local-llm.git)
+                    git remote set-url origin "$REPO_HTTPS" ;;
                     *)
-                        echo "ERROR: Unexpected origin. Configure the documented SSH origin manually; no remote credentials are printed."
+                    echo "ERROR: Unexpected origin. Configure the documented HTTPS origin manually; no remote credentials are printed."
                         exit 1 ;;
                 esac
             fi
