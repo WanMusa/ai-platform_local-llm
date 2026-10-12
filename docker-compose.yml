@@ -1,0 +1,55 @@
+services:
+  local-llm-api:
+    build: .
+    container_name: local-llm-api
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    # Internal only: reachable from other containers on ai_platform at
+    # http://local-llm-api:8000. No host port is published.
+    expose:
+      - "8000"
+
+    # Optional: for host-only access (e.g. SSH tunnel from your laptop), uncomment.
+    # ports:
+    #   - "127.0.0.1:8010:8000"
+
+    # Optional: public HTTPS via ai-platform_infra nginx-proxy + acme-companion.
+    # Set APP_DOMAIN and LETSENCRYPT_EMAIL in .env, then uncomment.
+    # environment:
+    #   VIRTUAL_HOST: ${APP_DOMAIN}
+    #   VIRTUAL_PORT: 8000
+    #   LETSENCRYPT_HOST: ${APP_DOMAIN}
+    #   LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - ai_platform
+
+  # Optional: shared Gemma runtime via Ollama on the same network.
+  # Uncomment if you are not already running a model server elsewhere, then
+  # pull the model once:  docker exec -it ollama ollama pull gemma3:4b
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - ai_platform
+
+# volumes:
+#   ollama_data:
+
+networks:
+  ai_platform:
+    external: true
