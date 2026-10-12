@@ -14,7 +14,7 @@ from app.llm_client import ModelClientError, OpenAICompatibleClient, get_model_c
 from app.main import app
 from app.profiles import parse_json_object
 
-TOKEN = "test-token"
+TOKEN = "unit-test-only-bearer-value-0123456789"
 AUTH = {"Authorization": "Bearer " + TOKEN}
 
 
@@ -200,10 +200,15 @@ def test_auth_required(client, path, headers):
     assert resp.status_code == 401
 
 
-def test_auth_fails_closed_when_token_not_configured(client):
-    app.dependency_overrides[get_settings] = lambda: make_settings(api_token="")
+@pytest.mark.parametrize("token", [
+    "", "change-me", "short-token", "REPLACE_WITH_A_LONG_RANDOM_TOKEN",
+    "a" * 40, "has whitespace " * 3, "é" * 40,
+])
+def test_auth_fails_closed_when_token_not_configured(client, token):
+    app.dependency_overrides[get_settings] = lambda: make_settings(api_token=token)
     resp = client.post("/extract-job", headers=AUTH, json={"cleaned_text": "x"})
     assert resp.status_code == 503
+    assert client.get("/health").status_code == 200
 
 
 def test_model_backend_error_returns_502(client, fake_model):

@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: local-llm-vps-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Deploy via SSH
@@ -20,51 +25,72 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 55m
 
           script: |
-            set -e
-
+            set -eu
             DEPLOY_DIR="$HOME/projects/ai-platform_local-llm"
+            REPO_SSH="git@github.com:WanMusa/ai-platform_local-llm.git"
+            export GIT_SSH_COMMAND="ssh -i \"$HOME/.ssh/local_llm_github\" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
 
-            # Create parent directory if it doesn't exist
-            mkdir -p "$HOME/projects"
-
-            # First deployment: clone repo
-            if [ ! -d "$DEPLOY_DIR/.git" ]; then
-                echo "=== FIRST DEPLOYMENT ==="
-                echo "Repository not found. Cloning..."
-
-                git clone https://github.com/WanMusa/ai-platform_local-llm.git "$DEPLOY_DIR"
-            else
-                echo "=== EXISTING DEPLOYMENT ==="
-
-                cd "$DEPLOY_DIR"
-
-                echo "=== BEFORE ==="
-                git rev-parse HEAD
-
-                git fetch origin
-                git reset --hard origin/main
+            if [ ! -r "$HOME/.ssh/local_llm_github" ] || [ ! -r "$HOME/.ssh/known_hosts" ]; then
+                echo "ERROR: Configure the VPS read-only GitHub deploy key and verified known_hosts (README)."
+                exit 1
             fi
-
-            cd "$DEPLOY_DIR"
-
-            if [ ! -f .env ]; then
+            if [ ! -f "$DEPLOY_DIR/.env" ]; then
                 echo "ERROR: $DEPLOY_DIR/.env not found."
-                echo "Create it from .env.example on the VPS, then re-run this workflow."
+                echo "Create/update it manually on the VPS; Actions does not transfer application settings."
                 exit 1
             fi
 
-            if ! docker network inspect ai_platform >/dev/null 2>&1; then
-                echo "Creating ai_platform network..."
-                docker network create ai_platform
+            cd "$DEPLOY_DIR"
+            if [ ! -e .git ]; then
+                # Bootstrap into the precreated .env directory without overwriting other files.
+                if [ -n "$(find . -mindepth 1 -maxdepth 1 ! -name .env -print -quit)" ]; then
+                    echo "ERROR: Directory is not a Git clone and contains files other than .env. Back them up/move them manually."
+                    exit 1
+                fi
+                git init -b main
+                git remote add origin "$REPO_SSH"
             else
-                echo "ai_platform network already exists"
+                if [ "$(git rev-parse --show-toplevel)" != "$DEPLOY_DIR" ]; then
+                    echo "ERROR: Deployment directory is not the expected Git working tree."
+                    exit 1
+                fi
+                case "$(git config --get remote.origin.url)" in
+                    "$REPO_SSH") ;;
+                    https://github.com/WanMusa/ai-platform_local-llm.git)
+                        git remote set-url origin "$REPO_SSH" ;;
+                    *)
+                        echo "ERROR: Unexpected origin. Configure the documented SSH origin manually; no remote credentials are printed."
+                        exit 1 ;;
+                esac
             fi
 
-            docker compose up -d --build --remove-orphans
+            git fetch origin main:refs/remotes/origin/main
+            if git cat-file -e origin/main:.env 2>/dev/null; then
+                echo "ERROR: Refusing a deployment that tracks .env."
+                exit 1
+            fi
+            if [ -n "$(git ls-files -- .env)" ]; then
+                echo "ERROR: Existing checkout tracks .env. Back it up and untrack it manually before deployment."
+                exit 1
+            fi
+            if git rev-parse --verify HEAD >/dev/null 2>&1; then
+                if [ "$(git branch --show-current)" != main ] || \
+                   ! git diff --quiet || ! git diff --cached --quiet; then
+                    echo "ERROR: Expected clean main checkout. Back up local tracked edits before deployment."
+                    exit 1
+                fi
+                # Refuse divergent history/untracked collisions instead of silently resetting files.
+                git merge --ff-only --no-overwrite-ignore origin/main
+            else
+                if [ -n "$(find . -mindepth 1 -maxdepth 1 ! -name .env ! -name .git -print -quit)" ]; then
+                    echo "ERROR: Incomplete clone contains local files. Back them up/move them manually."
+                    exit 1
+                fi
+                git checkout --no-overwrite-ignore -B main origin/main
+            fi
 
-            echo "=== AFTER ==="
-            git rev-parse HEAD
-
-            echo "=== DEPLOY COMPLETE ==="
+            bash scripts/start_services.sh
+            echo "Deployment complete; verify public HTTPS and real inference separately."
